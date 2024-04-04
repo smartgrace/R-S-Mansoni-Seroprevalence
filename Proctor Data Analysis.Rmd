@@ -1,0 +1,623 @@
+---
+title: "Proctor Data Analysis Assessment"
+author: "Chunyi Yu"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE, echo=FALSE}
+
+rm(list = ls()) 
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+
+getwd()
+setwd("C:/Users/fjyuc/Desktop/DATAGAME/R/Assessment_proctor_UCSF_Grace/test")
+
+options(digits=2)
+
+library(dplyr)
+library(mice)
+library(table1)
+
+```
+
+
+# Background  
+
+From Won et al.(2017) Am J Trop Med Hyg: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5462587/   
+
+Schistosomiasis, caused by infection with Schistosoma spp., affects more than 200 million people worldwide. Prevalence and intensity of infection with Schistosoma mansoni peak between 10 and 15 years of age and gradually decline with age. In children, chronic schistosomiasis is associated with anemia and malnutrition and can compromise growth and cognitive development. Because of the influence school-aged children have on transmission of schistosomiasis, mass treatment of this age group with praziquantel has been the cornerstone of schistosomiasis control activities. Until recently, disease burden and morbidity among preschool-aged children have remained understudied. However, recent research has shown that first infection is often acquired at a very young age, and there is growing evidence that the burden of disease among PSAC may warrant global attention.  
+
+A field study was conducted from 2012 to 2014 in Mbita subcounty, which borders Lake Victoria in western Kenya. Before the start of the study, malaria interventions had been in place for several years, but no mass drug administration (MDA) for schistosomiasis had been conducted.  
+
+Thirty villages that met the selection criteria were randomized into two study arms to compare different MDA strategies for schistosomiasis and STH programs. Fifteen villages were randomized to a community-wide treatment arm and the remaining 15 villages were randomized to a school-based treatment arm. In each of the 30 study villages, the study aimed to enroll 100 preschool aged children (1~5 years) and their mothers or guardians.  
+
+In both study arms, parasitologic and serologic indicators were monitored at baseline (year 1 in 2012) and annually following treatment. All annual monitoring was done using repeated, cross-sectional surveys in the selected villages and children were treated with praziquantal and albendazole approximately 2 months after each annual measurement.  
+
+
+
+# 1 Download and process the data  (data cleaning)
+
+1. Review the data and codebooks. Familiarize yourself with them. Then, read in the data. (These data are very clean so unlike most projects there is not an extensive amount of data processing required. In reality, data processing is often the most time consuming part of a project!) Depending on how you approach the work below, if you want to join the two datasets the 1:many key variable is village id (vid).  
+
+2. Create a derived variable that is an indicator of whether the child was seropositive to either the SEA antigen or the Sm25 antigen. We will be using a combined measure of serpositivity as the outcome!  
+
+```{r step1}
+
+
+
+  kids  <- read.table ("C:/Users/fjyuc/Desktop/DATAGAME/R/Assessment_proctor_UCSF_Grace/test/mbita_schisto.csv", header=TRUE, sep=",")
+  villages  <- read.table ("C:/Users/fjyuc/Desktop/DATAGAME/R/Assessment_proctor_UCSF_Grace/test/mbita_spatial.csv", header=TRUE, sep=",")
+    
+  library(dplyr)
+  complete<-left_join(kids,villages, by="vid")
+  complete$serop_indi<-ifelse(complete$sea_pos ==1|complete$sm25_pos==1,1,0)
+    
+  #transform to factor
+  complete <- transform(complete,
+                          vid=factor(vid),
+                          year=factor(year,levels=c(2012, 2013, 2014), labels=c("2012","2013","2014")),
+                          arm=factor(arm,levels=c("CWT","SBT"),labels=c("CWT","SBT")),
+                          sex=factor(sex,levels=c("male","female"), labels=c("M","F")),
+                          sea_pos=factor(sea_pos,levels=c(0,1),labels=c("No","Yes")),   #  seropositive to the SEA antigen; 
+                          sm25_pos=factor(sm25_pos,levels=c(0,1),labels=c("No","Yes")), # seropositive to the Sm25 antigen;
+                          kk_pos=factor(kk_pos,levels=c(0,1),labels=c("No","Yes")), # Kato-Katz positive for S. mansoni;
+                          serop_indi=factor(serop_indi,levels=c(0,1),labels=c("No","Yes"))) # seropositive to SEA or Sm25. 
+     
+    label(complete$vid)       <- "Village ID"
+    label(complete$pid)       <- "Child ID"
+    label(complete$year)      <- "Study year"
+    label(complete$arm)       <- "Study arm"
+    label(complete$agey)      <- "Age"
+    label(complete$sex)       <- "Sex"
+    label(complete$sea)       <- "Sea response"
+    label(complete$sea_pos)   <- "Sea Positive"
+    label(complete$sm25)      <- "Sm25 response"
+    label(complete$sm25_pos)  <- "Sm25 Positive"
+    label(complete$sm_epg)    <- "Eggs per gram"
+    label(complete$kk_pos)    <- "KK Positive"
+    label(complete$elev)      <- "Village elevation"
+    label(complete$tmin)      <- "Average minimum temperature"
+    label(complete$prec)      <- "Average precipitation"
+    label(complete$dist_victoria)   <- "Distance to Lake Victoria"
+    label(complete$serop_indi)      <- "A seropositivity indicator"
+
+    units(complete$agey) <- "years"
+    units(complete$elev) <- "meters"
+    units(complete$tmin) <- "F"
+    units(complete$prec) <- "mm"
+    units(complete$dist_victoria) <- "meters"
+
+    attach(complete)
+
+
+```
+
+
+This is a data containing information from a study on Schistosoma mansoni infection in children from 30 villages in Kenya over three years of 2012~2014. The dataset contains 3663 observations and 17 variables. Each observation represents a child who participated in the study. The variables include the study year, village ID, study arm, individual child ID, age, sex, measures of infection (SEA response, Sm25 response, and Kato-Katz eggs per gram of stool), seropositivity to SEA and Sm25 antigens, and Kato-Katz results. It also includes information on village elevation, average minimum temperature, average precipitation, distance to Lake Victoria. Finally, there is an indicator variable for whether the child was seropositive to either the SEA or Sm25 antigens, which is the primory outcome for this study.   
+
+
+
+
+
+
+#2 Describe the data (numeric summaries with data visualization)
+
+Provide some simple descriptive summaries that help describe the data.   
+For example, how many children were measured at baseline (2012) and in subsequent survey visits based on blood- and stool-based measures of infection? How complete were the measurements? For quantitative variables, is there anything you see about their distribution that might be important to consider in any downstream analysis? There is no one way to do this and we are not looking for a specific result. We are interested to learn how you would describe the data to have a sense for what it contains.
+
+
+
+```{r step2}
+
+
+# 1. how many children were measured at baseline (2012) and in subsequent survey visits based on blood- and stool-based measures of infection? 
+
+    library(dplyr)
+    library(plyr)
+    ddply(complete, c("sea","sm25","sm_epg")~ year,nrow) 
+    
+    
+    #The first table shows the number of children measured at baseline and in the following two years for three different measures of infection. For the blood-based measure of infection with SEA, there were 374 children measured at baseline, 395 in the second year, and 452 in the third year. Similarly, for the blood-based measure of infection with sm_25, there were 373 children measured at baseline, 396 in the second year, and 452 in the third year. Lastly, for the stool-based measure of infection with egg per gram, there were 373 children measured at baseline, 396 in the second year, and 452 in the third year. 
+    
+    
+    
+# 2.How complete were the measurements? 
+  library(mice)
+  md.pattern(complete)
+  summary(complete)
+  
+  # Based on the data visualization, it is apparent that there are 237 instances where values are missing in the variables of sm_epg and kk_pos simultaneously. This may be due to these 237 individuals being unable to take the sm_epg tests, resulting in the missing values.
+  
+  
+
+  
+#3. For quantitative variables, is there anything you see about their distribution that might be important to consider in any downstream analysis?
+  
+    # Create spaghetti plot
+    panel.hist <- function(x, ...) 
+    {
+        usr <- par("usr")
+        par(usr = c(usr[1:2], 0, 1.5) )
+        h <- hist(x, plot = FALSE)
+        breaks <- h$breaks; nB <- length(breaks)
+        y <- h$counts; y <- y/max(y)
+        rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+    } # put histograms on the diagonal
+    
+    
+    panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+    {
+        par(usr = c(0, 1, 0, 1))
+        r <- cor(x, y)
+        txt <- format(c(r, 0.123456789), digits = digits)[1]
+        txt <- paste0(prefix, txt)
+        if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+        text(0.5, 0.5, txt, cex = cex.cor * 0.4) 
+    }# put correlations on the upper panels
+     
+    pairs(~agey+sea+sm25+sm_epg, 
+          main="Simple Scatterplot Matrix for children", 
+          pch = 21, 
+          # panel = panel.smooth, 
+          lower.panel = panel.smooth, 
+          upper.panel = panel.cor,
+          gap=0, 
+          row1attop=FALSE,
+          diag.panel = panel.hist, 
+          bg = c("red", "blue")[unclass(complete$arm)])
+    
+    legend("topright", c("CWT", "SBT"), col= c("red", "blue"), pch=1) 
+    
+
+    # The distribution of the four variables can be summarized as follows: the age variable is not strongly skewed, but there are fewer observations in the youngest and oldest groups; the sea variable shows some extreme values on both ends, while the sm25 and sm_epg variables are skewed to the right. Further investigation is required for observations with extreme values in sea, sm25, and sm_epg. There is no strong correlation between the four variables, but there is a weak correlation between age and sea, indicating that younger people tend to have higher levels of sea. As for the relationship between age and the other three variables, higher response rates are mainly observed in younger age groups. The distribution between the treatment and control groups (blue vs red) on the graph appears to be relatively even, but further statistical comparisons are necessary for confirmation.   
+
+    
+    pairs(~agey+elev+tmin+prec+dist_victoria, 
+          main="Simple Scatterplot Matrix for community", 
+          pch = 21, 
+          # panel = panel.smooth, 
+          lower.panel = panel.smooth, 
+          upper.panel = panel.cor,
+          gap=0, 
+          row1attop=FALSE,
+          diag.panel = panel.hist, 
+          bg = c("red", "blue")[unclass(complete$arm)])
+    
+    legend("topright", c("CWT", "SBT"), col= c("red", "blue"), pch=1) 
+    
+
+# The four geographical variables show a strong correlation, particularly the distance from the lake (dist_victoria) which is strongly correlated with the other three variables with all correlation coefficients exceeding 0.5. The variable is negatively correlated with the minimum temperature, meaning that the farther the distance from the lake, the lower the temperature. There is also a strong negative correlation between temperature and the other two variables of altitude and precipitation: the higher the altitude, the lower the temperature, and the more precipitation. However, there is no clear relationship between altitude and precipitation. The strong correlation among variables may lead to collinearity problems when building models, which should be addressed.On the other hand, there is a weak correlation between age and the four geographical variables, suggesting that children of all ages are distributed across each region. 
+
+    
+     pairs(~agey+sea+sm25+sm_epg+elev+prec, 
+          main="Simple Scatterplot Matrix for community", 
+          pch = 21, 
+          # panel = panel.smooth, 
+          lower.panel = panel.smooth, 
+          upper.panel = panel.cor,
+          gap=0, 
+          row1attop=FALSE,
+          diag.panel = panel.hist, 
+          bg = c("red", "blue")[unclass(complete$arm)])
+    
+    legend("topright", c("CWT", "SBT"), col= c("red", "blue"), pch=1) 
+    
+
+# After reviewing the previous plots, two environmental variables and two variables related to the children were selected to create a graph. The graph shows a weak negative correlation between altitude and the child-related variables. This suggests that the higher the altitude, the lower the positive response, although the correlation is so weak that it can be ignored. Additionally, there is a weak negative correlation between precipitation and the sea variable. This indicates that the more precipitation there is, the lower the positive response value of the sea variable. The relationship between these variables and the other variables is not strong.
+    
+    
+
+
+#4. Provide some simple descriptive summaries that help describe the data.   
+    
+    # Group comparison by arm
+    library(CBCgrps)
+    twogrps(complete[,-c(2,4)], "arm")
+
+    #Another method for group comparisions with test types & P values
+    library(epiDisplay)
+    library(data.table)
+    dt<-as.data.table(complete)
+    tableStack(vars=c(year,agey,sea, sm25,sm_epg,sea_pos,sm25_pos,kk_pos,elev,tmin,prec,dist_victoria), by = arm, dataFrame = dt)
+
+    
+    
+# A total of 3663 preschool-aged children were enrolled in the study during 2012 to 2014. Of those enrolled, there were 1826 (49.84%) children in the CWT group, median age of enrollment was 3.5 years (2.43, 4.44, P=0.87) for the total group: for CWT group, the median age was 3.5 (2.45, 4.44), and for the SBT group, it was 3.5 (2.4, 4.45); There were slightly more female enrolled in the group (52%), with 51% for CWT and 53% for SBT. The overall prevalence of S.Mansoni infection with antibody responses to SEA was lower in CWT (43%) compared to SBT (53%) with P< 0.001; the overall prevalence of S.Mansoni infection by Kato-Katz was lower in CWT (23%) compared to SBT (28%) with P< 0.001; In contrast to the SEA results, prevalence of S.Mansoni infection with antibodies to Sm25 between two groups - CWT (17%) and SBT (17%)- are very similar.   
+    
+
+```
+ 
+
+
+
+
+
+
+#3 Summarize baseline characteristics (group comparisons:table 1)
+
+In randomized, controlled trials (RCTs) we use random allocation of treatment to balance measurable and unmeasurable characteristics between treatment groups. On average, the potential outcomes in the two groups should be the same in the absence of treatment any differences we observe in outcomes can be attributed to a treatment effect.One important step in an RCT is to compare groups based on measurable baseline characteristics. This is often Table 1 in reporting for RCTs and is item 15 on the CONSORT checklist for cluster randomized trials.The schistosomiasis study was a community randomized trial so the independent units for analysis are the community.
+
+1. Create a table that summarizes individual-level and cluster-level characteristics by randomized group (community-wide treatment and school-based treatment). Each row should be a variable or level of that variable. There should be a separate column for each group. For measures of S. mansoni infection or antibody response, limit your summary to the categorical measures rather than quantitative measures. For other quantitative variables, summarize the mean and standard deviation (and/or median and interquartile range if you feel that is more appropriate). For categorical variables, report the N and percent.
+
+```{r step3}
+
+#  Individual level VS community level-----------------------------------------------------------------
+    
+# a table showing baseline characteristics for cluster and individual participant levels as applicable for each group
+
+
+    # Create a new data set for tables.
+    data4comp <- complete[, -c(4)]
+    
+    library(dplyr)
+    aggdata <- aggregate(data4comp[, c(4,6,7,8)], by = list(data4comp$vid), FUN = mean , na.rm = T) 
+    colnames(aggdata)[1:5] <- c("vid","agem","seam","sm25m","sm_epgm")
+    data4comp<-left_join(data4comp,aggdata, by="vid")
+    data4comp<-data4comp[,-2]
+    
+    label(data4comp$agem)  <- "community Average age"
+    label(data4comp$seam)  <- "community Sea response"
+    label(data4comp$sm25m)  <- "community Sm25 response"
+    label(data4comp$sm_epgm)  <- "community Eggs per gram"
+    units(data4comp$agem)  <- "years"
+
+
+    #Use table 1 to create the baseline tables 
+    #Functions and arguments
+    my.render.cont <- function(x) {
+        with(stats.apply.rounding(stats.default(x), digits=2), c("",
+            "Mean (SD)"=sprintf("%s (&plusmn; %s)", MEAN, SD)))
+     }
+    my.render.cat <- function(x) {
+        c("", sapply(stats.default(x), function(y) with(y,
+            sprintf("%d (%0.0f %%)", FREQ, PCT))))
+    }
+
+   
+    caption1  <- "Individual-level Baseline Characteristics by Randomized Group"
+    footnote <- " "
+    table1(~ year + agey + sex +sea_pos+sm25_pos+kk_pos| arm,
+            overall=F,
+            data=data4comp,
+            caption=caption1,
+            footnote=footnote,
+            render.continuous=my.render.cont,
+            render.categorical=my.render.cat)
+    
+    caption2  <- "Cluster-level Baseline Characteristics by Randomized Group"
+    footnote <- " "
+    table1(~ agem +elev+tmin+prec+dist_victoria | arm,
+            overall=F,
+            data=data4comp,
+            caption=caption2,
+            footnote=footnote,
+            render.continuous=my.render.cont,
+            render.categorical=my.render.cat)   
+    
+    
+    # caption3  <- "Comparison of Baseline Characteristics on Cluster-level and Individual Level"
+    #  table1(~ agey + agem +sea+sm25 +sm_epg +seam+sm25m +sm_epgm | arm,
+    #         overall=F,
+    #         data=data4comp,
+    #         caption=caption2,
+    #         footnote=footnote,
+    #         render.continuous=my.render.cont,
+    #         render.categorical=my.render.cat)  
+
+```
+
+2. Do the groups look well balanced at baseline based on measured characteristics? Briefly explain why you think they are or are not well balanced. 
+The groups are basically well balanced at baseline based on measured characteristics.The total number of clusters for the treatment and control group are equal (both are 15); Based on the characteristics shown in both tables, and the break-down percentages of each variable/level between two groups appears to be quite similar between the two groups.  
+
+Note that the mean(sd) of age on the individual level is different from that on the community level, though the means are the same, sd on the individual level is much larger than on the community level. The difference in the variance should be taken account into model building. 
+
+
+3. Idea for reflection: what element of the design could contribute to better or worse balance between groups in their baseline characteristics? 
+One element of the design could have great impact on the balance between groups is the number of clusters in each group. Different from a completely randomized control design, when we randomize groups of people instead of individuals, there is greater risk that the groups will end up being different from each other by chance, even if we did the randomization correctly. This is because there are usually fewer groups than individuals, especially the number of clusters is often small, so the randomization might not work out perfectly.    
+
+
+
+
+
+
+
+
+
+
+
+#4 Compare S. mansoni seroprevalence between groups (statistical modeling)
+
+1.Estimate the effect of Community-Wide Treatment (CWT) versus School-Based Treatment (SBT) on S. mansoni seroprevalence as measured by IgG seropositivity to the Soluble Egg Antigen (SEA) and/or the recombinant Sm25 antigen. Since SBT is the current standard of care, treat that as the comparison group and CWT as the intervention group. 
+
+Compare groups based on an absolute measure of effect, namely the difference in prevalence, averaged over the entire post-treatment period (combining measurements over 2013 and 2014). Provide estimates of effect, 95% confidence intervals, and a P-value for the difference. Summarize your results in a formatted table. Provide a brief interpretation of the results.
+
+There are multiple correct ways to do the analysis, but whatever approach you use remember: the independent unit in the trial is the community. We recommend either an analysis based on community-level means or an analysis based on child-level outcomes that accounts for outcome correlation within the community.
+
+```{r step4}
+
+
+    # An analysis based on community-level means
+    
+    ######################
+    # create a new dataset for modeling
+    ######################
+
+    # create an indicator variable serop_indi;
+    d2 <- kids %>% mutate(serop_indi<-ifelse(sea_pos ==1|sm25_pos==1,1,0))
+    
+    # Transform the format of variables
+    d3 <- d2 %>% 
+      ungroup() %>%
+      mutate(vid=factor(vid),
+             yearf = factor(year),
+             serop =as.numeric(serop_indi)-1)
+    
+    
+    # Create the response variable
+    # calculate prevalence by village over 2013 and 2014 years
+    detach(package:plyr)
+    
+    dt4model <- subset(d3, year!=2012) %>%
+      group_by(vid) %>%
+      summarize(serop_n = sum(serop,na.rm=T),
+                serop_N = sum(ifelse(!is.na(serop),1,0))
+                ) %>%
+      mutate(serop_prev = serop_n/serop_N)
+    
+    # Create the final data set
+    dt4model<-left_join(complete, dt4model, by="vid")
+    dt4model<-subset(dt4model, select = c(year, vid,arm,agey,sex,elev,tmin,prec,dist_victoria,serop_prev))
+    
+    #scale the large value variables
+     dt4model<- transform(dt4model, 
+              selev=scale(elev, center = F,scale = T),
+              stmin = scale(tmin, center = F,scale = T),
+              sprec =scale(prec, center = F,scale = T),
+              sdist_victoria=scale(dist_victoria, center = F,scale = T))
+     
+    summary(dt4model)
+    attach(dt4model)
+    
+    
+    
+    #################
+    # Fit a mixed-effect regression model with randomness for clusters
+    #################
+    
+    library(lme4)
+    lmm <- lmer(serop_prev ~ arm + agey + sex + selev+stmin+sprec +sdist_victoria+(1 | vid), data = dt4model,REML=F)
+    summary(lmm)
+    
+    library(car)
+    Anova(lmm) #agey and sex are not significant.  
+    # The output gives some measures of model fit, including AIC, BIC, log likelihood, and deviance. Also gives an estimate of the variance explained by the random effect. The random effect here is indistinguishable from 0, then the random effect may not matter so we can do a regular linear model instead.
+    
+    
+
+    
+    #################
+    #Fit a linear regression
+    #################
+  
+    #univariate linear regression 
+    lm_unimodel<-function(y,x,D){
+    unimodel <- lm(y~x, data = D)
+    s<-summary(unimodel)
+    return(s)
+    }
+   varlist <- dt4model[,c(3,4,5,11,12,13,14)] #单变量list
+   lapply(y=dt4model$serop_prev, varlist, D=dt4model, FUN=lm_unimodel) 
+   #Based on the univariate linear regression output, agey and sex are not significant.
+  
+    #Fit a linear regression model
+    lmfull<-lm(serop_prev ~ arm + agey + sex +selev+stmin+sprec+sdist_victoria, data=dt4model)
+    summary(lmfull) #agey, sex,selev are not significant.
+    lm1<-lm(serop_prev ~ arm +stmin+sprec+sdist_victoria, data=dt4model) 
+    summary(lm1)
+    #The standard deviance of stmin is much larger than those of other variables. Could have collinearity issue.
+    
+    # Model selection 
+    lmnull<-lm(serop_prev ~ 1, data=dt4model)
+    stepAIC(lmnull,direction="both",scope=list(upper=lmfull,lower=lmnull)) 
+    #STEPAIC model:exactly the same as lm1.
+    
+    
+    #Check model linear assumptions.
+    par(mfrow=c(2,2))
+    scatter.smooth(stmin, fitted(lm1), cex=0.5)
+    scatter.smooth(sprec,fitted(lm1), cex=0.5)
+    scatter.smooth(sdist_victoria, fitted(lm1),cex=0.5)
+    #Basically all follow linear assumption; stmin and sdist_victoria show a bit flat on the one end, due to some outliers in that region. 
+    par(mfrow=c(1,1))
+    
+    # density plots of the geographical variables, broken down by 2 groups.
+    library(cowplot)
+    library(ggplot2)
+    
+    p1<-ggplot(complete, aes(selev, fill=factor(arm))) +
+    geom_density(alpha=.5,color=NA)+
+    theme_classic()+
+    theme(legend.position = c(.8, .8))
+    
+    p2<-ggplot(complete, aes(stmin, fill=factor(arm))) +
+    geom_density(alpha=.5,color=NA)+
+    theme_classic()+
+    theme(legend.position = c(.2, .8))
+        
+    p3<-ggplot(complete, aes(sprec, fill=factor(arm))) +
+    geom_density(alpha=.5,color=NA)+
+    theme_classic()+
+    theme(legend.position = c(.8, .8))
+    
+    p4<-ggplot(complete, aes(sdist_victoria, fill=factor(arm))) +
+    geom_density(alpha=.5,color=NA)+
+    theme_classic()+
+    theme(legend.position = c(.8, .8))
+    
+    plot_grid(p1,p2,p3,p4, nrow=2,ncol=2, labels=c('selev','stmin','sprec','sdist_victoria'), align=c('v','h'))
+    #from the density plot, the distribution of selev is not quite different between 2 groups.
+    
+    
+     #correlation plot to check collinearity issue
+    library(corrplot) 
+    rr <- cor(dt4model[ ,c(4,11,12,13,14)]) 
+    corrplot.mixed(rr)
+    #vif
+    library(car)
+    vif(lm(serop_prev ~ arm +stmin+sprec + sdist_victoria, data=dt4model)) 
+    #The four geographical variables are highly correlated - stmin has strong relationships with all three other terms, would consider not to keep all of them in the model. 
+ 
+    
+    #drop stmin and build a model2 with fewer variables. 
+    lm2<-lm(serop_prev ~ arm +sprec + sdist_victoria, data=dt4model) 
+    summary(lm2)
+    
+
+    
+    # plot residuals against the fitted values
+    plot(fitted(lm1), residuals(lm1), xlab="Fitted Values", ylab="Residuals")
+    lines(smooth.spline(fitted(lm1), residuals(lm1))) 
+    abline(h=0, lty=2) 
+    
+    plot(fitted(lm2), residuals(lm2), xlab="Fitted Values", ylab="Residuals")
+    lines(smooth.spline(fitted(lm2), residuals(lm2))) 
+    abline(h=0, lty=2) 
+    
+    # we expect to see the random scatter. If the scatter is not random that means there's some variation in the data that has not been explained.A dashed horizontal line representing 0: an average of 0 deviaiton from the best fit line; a solid line represents the residual deviation from the best fit line. Ideally, it will overlay the dashed line. 
+    #The plots indicate that neither model is a good fit for the data. In both plots, we can observe a pattern in the distribution of residuals, indicates that the variance is not homogeneous. This can be explained by the presence of clusters, as each cluster may have a different variance structure. 
+    
+    
+    
+    #################
+    #Fit a GEE model for a marginal analysis
+    #################
+    # GEE:generalized estimate equation: to try different variance structures
+    library(geepack)
+    
+    #First we try independence structure, i.e.the linear regression iid variance structure. 
+    gee1<-geeglm(serop_prev ~ arm +sprec + sdist_victoria, data=dt4model, id=vid, family = gaussian, corstr="independence",std.err = "san.se")
+    summary(gee1) 
+    #Based on the previous exploratory analysis, we use a linear model for the mean for both groups;
+    # the coefficient estimations are the samle as of lm2, due to the independence variance structure.
+
+    
+    #now fit a proper model 
+    #with compound symmetric (constant) correlation structure for depdendence in clusters.
+    # Assume same for 2 groups.
+    gee2<-geeglm(serop_prev ~ arm +sprec + sdist_victoria, data=dt4model, id=vid, family = gaussian, corstr="exchangeable", std.err = "san.se")
+    summary(gee2)
+    
+    # now try an autoregressive correlation AR1
+    gee3<-geeglm(serop_prev ~ arm +sprec + sdist_victoria, data=dt4model, id=vid, family = gaussian, corstr="ar1", std.err = "san.se")
+    summary(gee3)
+    
+    #Finally, try a unstructured correlation/a non-parametric form: heterogeneous variance
+    #may take longer to run, due to large number of villages. 
+    # gee4<-geeglm(serop_prev ~ arm +sprec + sdist_victoria, data=dt4model, id=vid, family = gaussian, corstr="unstructured", std.err = "san.se")
+    # summary(gee4)
+
+    
+    #Since that all the gee models shows no significant effect of arm adjusted on other variables, try to fit a univarite model with structured variance.
+    gee0<-geeglm(serop_prev ~ arm, data=dt4model, id=vid, family = gaussian, corstr="exchangeable", std.err = "san.se")
+    summary(gee0)
+    #Now without other variables in the model, the P-value of armSBT alone is 0.053, close to o.o5, but still not significant. 
+
+    #We can see that different correlation structures produce different results. We can select the covariance structure which is most appropriate for the model by comparing the AIC or BIC values for each model and select the one with the smallest value. 
+
+
+    #Provide estimates of effect, 95% confidence intervals, and a P-value for the difference. Summarize your results in a formatted table.
+    library(doBy)
+    est=esticon(gee2,diag(4))
+    sum_table<-est[, -c(5,6)]
+    rownames(sum_table) <-c("Intercept", "ArmSBT","Sprec", "Sdist_victoria")
+    colnames(sum_table) <- c("Estimate", "Standard error","Statistic", "P-value","Lower","Upper")
+    head(sum_table,6)
+
+  
+    #Provide a brief interpretation of the results.
+   # After analyzing the outputs from the GEE models, it was found that the estimated effect of the "arm" variable was 0.04. This means that, under the same conditions of "pre" and "dist_victoria", the prevalence is expected to increase by 0.04 when transitioning from the CWT group to the SBT group. However, since the P-value is greater than 0.05, there is no statistically significant difference in the prevalence between the CWT and SBT groups over the two years, whether the other variables are adjusted or not in the model. It's important to note that this conclusion differs from that of the general linear regression model, as the GEE model takes into account the cluster effect while modeling the data.
+
+
+
+```
+
+2. If you think that comparing groups using a relative measure of effect would be better, such as the prevalence ratio or odds ratio, then briefly justify your reasoning and approach.
+
+Research papers have suggested using different models for analyzing data in studies that focus on changes within participants over time or clusters of participants. However, these models may not work well in certain situations where the data is binary. When the data is Gaussian, the results from both models are similar, but with binary data, the results from the marginal model can be smaller and have a different interpretation.
+
+Please see: @ (David M. Murray, PhD, Sherri P. Varnell, PhD, MS, and Jonathan L. Blitstein, MS: Design and Analysis of Group-Randomized Trials: A Review of Recent Methodological Developments: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1448268/)
+
+
+
+
+
+#5 Bonus Challenge (model validation)
+
+Conditional on enrollment into a trial, a randomized controlled trial has one source of random variation: the treatment assignment. An approach to exact inference in a trial is to compare groups using a permutation test, where the treatment assignment is re-randomized across many (sometime all) permutations and a test statistic is computed in each permuted dataset. The distribution of the test statistic over the permutations defines its null distribution, which enables exact inference.
+
+Most trials at Proctor rely on permutation tests for our primary inference. For one of the outcomes above, estimate the permutation P-value for differences between groups, assuming that the only random variation in the trial is the community-level treatment assignment (which should be approximately true, by design!). You can permute any test statistic you want. How does your inference compare with your results from the previous section?
+
+```{r step5, warning = FALSE}
+
+
+#Idea: Boostrap method for any test statistic from the previous sections. 
+#Treat the sample we have as the real population, randomly select a equal number of observations from the population and  use as a new sample, model on that sample to get a test statistic; repeated this process for many times(like 100 times) and get many statistics (like 100 statistics) to form a distribution of this statistics. Calculate the P value of the statistic that we got from last section. 
+
+    #using BOOSTRAP resampling method to build up a distribution for the test statistic of the coefficient estimation of arm. 
+    gl<-geeglm(serop_prev ~ arm, data=dt4model, id=vid, family = gaussian, corstr="exchangeable", std.err = "san.se")
+    a<--as.numeric(unlist(summary(gl)[6])[6])
+  
+    
+    #a boostrap function
+    a<-NULL
+    statis.fn <- function(data,number,index){
+      set.seed(1)
+      for (i in index) {
+      library(dplyr)
+      dt <- sample_n(data, number)
+      gl<-geeglm(serop_prev ~ arm, data=dt, id=vid, family = gaussian, corstr="exchangeable", std.err = "san.se")
+      a<--as.numeric(unlist(summary(gl)[6])[6])
+      a <- c(a, i)
+      }
+      return(a)
+    }
+    
+    
+    #perform the bootstrap analysis with 100 resamples
+      bootstrap_stat<-statis.fn(dt4model,100,1:10)
+      # hist(bootstrap_stat)
+    
+    #calculate the 95% confidence interval for the mean estimate
+      lower_ci <- quantile(bootstrap_stat, 0.025)
+      upper_ci <- quantile(bootstrap_stat, 0.975)
+      
+      c(lower_ci,upper_ci)
+      
+
+  
+    # Other example: compare std.error using boostrap from boot package. 
+     library(boot)
+     boot.fn=function(data,index)
+     coefficients(lm(serop_prev ~ arm, data=data, id=vid, subset = index))
+     set.seed(1)
+     boot(dt4model, boot.fn, 100)
+    #compared with estimates of armSBT from formulas directly.
+    summary(lm(serop_prev ~ arm, data=dt4model))$coef
+  
+    
+  detach(complete)
+  
+```
+
+
+
+
+
+
+
+
+
